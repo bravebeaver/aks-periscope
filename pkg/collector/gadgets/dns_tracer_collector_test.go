@@ -74,7 +74,10 @@ var _ = Describe("DnsTracerCollector", func() {
 
 		By("Collecting result")
 		data := dnsTracerCollector.GetData()
-		log.Printf("==========================\nCollected dns trace data %v \n ==========================\n", data)
+		log.Print("==========================\ndns trace data ==========================\n")
+		for k, v := range data {
+			log.Printf("%s: %v\n", k, v)
+		}
 		Expect(data).ToNot(BeNil())
 	})
 })

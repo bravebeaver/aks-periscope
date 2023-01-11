@@ -1,9 +1,11 @@
 package gadgets
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/cilium/ebpf/rlimit"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/Azure/aks-periscope/pkg/interfaces"
@@ -17,6 +19,12 @@ import (
 type DNSTracerCollector struct {
 	data         map[string]string
 	osIdentifier utils.OSIdentifier
+}
+
+type DNSTraceEvent struct {
+	Timestamp  time.Time   `json:"timestamp,omitempty" column:"id,width:10,fixed,hide"`
+	EventType  string      `json:"eventtype,omitempty" column:"eventType,width:10,fixed,hide"`
+	TraceEvent types.Event `json:"dnsTraceEvent,omitempty" column:"traceEvent,width:100,fixed,hide"`
 }
 
 // NewDNSTracerCollector is a constructor to collect DNS trace data using IG
@@ -47,6 +55,12 @@ func (collector *DNSTracerCollector) CheckSupported() error {
 // Collect implements the interface method
 func (collector *DNSTracerCollector) Collect() error {
 
+	var events []string
+	defer func(tracerData []string) {
+		eventsInOrder := strings.Join(events, "\n")
+		collector.data[fmt.Sprintf("%s-%s", collector.GetName(), "host")] = eventsInOrder
+	}(events)
+
 	// Define a callback to be called each time there is an event, capture in the collector data
 	eventCallback := func(event types.Event) {
 		//PktType    string     `json:"pktType,omitempty" column:"type,minWidth:7,maxWidth:9"`
@@ -56,9 +70,14 @@ func (collector *DNSTracerCollector) Collect() error {
 		} else if qr == types.DNSPktTypeResponse {
 			qr = "response"
 		}
-		result := fmt.Sprintf("A new %q dns %s about %s using packet type %s was observed. nameserver: %s, response: %s\n",
-			event.QType, qr, event.DNSName, event.PktType, event.Nameserver, event.Rcode)
-		collector.data[fmt.Sprintf("%s-%s", collector.GetName(), event.ID)] = result
+		//result := fmt.Sprintf("A new %q dns %s about %s using packet type %s was observed. nameserver: %s, response: %s\n",
+		//	event.QType, qr, event.DNSName, event.PktType, event.Nameserver, event.Rcode)
+		jsonify, _ := json.Marshal(DNSTraceEvent{
+			TraceEvent: event,
+			Timestamp:  time.Now(),
+			EventType:  string(qr),
+		})
+		events = append(events, string(jsonify))
 	}
 
 	// Create tracer. In this case no parameters are passed.
@@ -66,6 +85,7 @@ func (collector *DNSTracerCollector) Collect() error {
 	if err != nil {
 		return fmt.Errorf("error creating tracer: %s\n", err)
 	}
+
 	defer dnsTracer.Close()
 
 	pid := uint32(os.Getpid())
