@@ -41,7 +41,7 @@ func (collector *DNSTracerCollector) GetName() string {
 
 func (collector *DNSTracerCollector) CheckSupported() error {
 	// check for OS since ebpf is only available on linux
-	if collector.osIdentifier != "linux" {
+	if collector.osIdentifier != utils.Linux {
 		return fmt.Errorf("tracer uses ebpf capabilities which is supported on linux only")
 	}
 	// In some kernel versions it's needed to bump the rlimits to use run BPF programs.
@@ -70,8 +70,7 @@ func (collector *DNSTracerCollector) Collect() error {
 		} else if qr == types.DNSPktTypeResponse {
 			qr = "response"
 		}
-		//result := fmt.Sprintf("A new %q dns %s about %s using packet type %s was observed. nameserver: %s, response: %s\n",
-		//	event.QType, qr, event.DNSName, event.PktType, event.Nameserver, event.Rcode)
+
 		jsonify, _ := json.Marshal(DNSTraceEvent{
 			TraceEvent: event,
 			Timestamp:  time.Now(),
@@ -80,7 +79,7 @@ func (collector *DNSTracerCollector) Collect() error {
 		events = append(events, string(jsonify))
 	}
 
-	// Create tracer. In this case no parameters are passed.
+	// Create tracer. DNS tracer does not allow container filtering?
 	dnsTracer, err := tracer.NewTracer()
 	if err != nil {
 		return fmt.Errorf("error creating tracer: %s\n", err)
@@ -88,8 +87,8 @@ func (collector *DNSTracerCollector) Collect() error {
 
 	defer dnsTracer.Close()
 
+	// attach the event callback to the caller
 	pid := uint32(os.Getpid())
-	log.Printf("attach tracer to pid %v", pid)
 	if err := dnsTracer.Attach(pid, eventCallback); err != nil {
 		return fmt.Errorf("error attaching tracer: %v\n", err)
 	}
